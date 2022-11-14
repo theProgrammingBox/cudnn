@@ -11,7 +11,7 @@ using std::max;
 
 int main(int argc, char const* argv[]) {
 	srand(time(NULL));
-	
+
 	// creating handle, it combines every detail of a convolution we are about to specify
 	// into a single object describing the convolution
 	cudnnHandle_t cudnn;
@@ -23,13 +23,13 @@ int main(int argc, char const* argv[]) {
 	const uint64_t batchSize = 1;			// unique images running in parallel
 	const uint64_t inputFeatures = 3;		// 3 image "features" for rgb
 	const uint64_t outputFeatures = 3;		// 3 output "features", they are the result of the convolution
-	const uint64_t inputImageRows = 4;		// height of the input images
-	const uint64_t inputImageCols = 4;		// width of the input images
-	const uint64_t outputImageRows = 2;	// height of the output images
-	const uint64_t outputImageCols = 2;	// width of the output images
+	const uint64_t inputImageRows = 3;		// height of the input images
+	const uint64_t inputImageCols = 3;		// width of the input images
+	const uint64_t outputImageRows = 5;	// height of the output images
+	const uint64_t outputImageCols = 5;	// width of the output images
 	const uint64_t filterRows = 3;			// assuming square filter for simplicity
 	const uint64_t filterCols = 3;			// assuming square filter for simplicity
-	
+
 	//NHWC or NCHW
 	// n is batch dimensions
 	// c is channel dimensions, rgb for example
@@ -70,7 +70,7 @@ int main(int argc, char const* argv[]) {
 		/*in_channels=*/inputFeatures,		// number of "features" in each image like rgb in this case
 		/*kernel_height=*/filterRows,		// height of each filter
 		/*kernel_width=*/filterCols);		// width of each filter
-	
+
 	// convolution descriptor, this is where we specify the details of the convolution
 	// like the padding, stride, and dilation
 
@@ -97,7 +97,7 @@ int main(int argc, char const* argv[]) {
 		/*computeType=*/CUDNN_DATA_FLOAT);	// data type
 	// there are a few convolution modes, cross correlation is the most common one
 	// convolution is the other one, it is the same as cross correlation but flips the filter
-	
+
 	// now we need a more detailed description of the convolution as well as the memory limitations
 
 	int requestedAlgoCount = 0;
@@ -124,7 +124,7 @@ int main(int argc, char const* argv[]) {
 		perfResults[0].algo,
 		&workspaceBytes);
 	cudaMalloc(&workspace, workspaceBytes);
-	
+
 	// now we can run the convolution
 	float alpha = 1.0f;
 	float beta = 0.0f;
@@ -147,7 +147,7 @@ int main(int argc, char const* argv[]) {
 	cudaMalloc(&gpuFilter, outputFeatures * inputFeatures * filterRows * filterCols * sizeof(float));
 	cudaMemcpy(gpuInput, input, batchSize * inputFeatures * inputImageRows * inputImageCols * sizeof(float), cudaMemcpyHostToDevice);
 	cudaMemcpy(gpuFilter, filter, outputFeatures * inputFeatures * filterRows * filterCols * sizeof(float), cudaMemcpyHostToDevice);
-	
+
 	// running the convolution
 	cudnnConvolutionForward(cudnn,
 		&alpha,
@@ -165,7 +165,7 @@ int main(int argc, char const* argv[]) {
 
 	// copying the output back to the cpu
 	cudaMemcpy(output, gpuOutput, batchSize * outputFeatures * outputImageRows * outputImageCols * sizeof(float), cudaMemcpyDeviceToHost);
-	
+
 	// printing the output
 	for (uint64_t i = 0; i < batchSize; i++)
 	{
@@ -184,14 +184,21 @@ int main(int argc, char const* argv[]) {
 		cout << endl;
 	}
 
+	//cout padding
+	cout << "verticalPadding: " << verticalPadding << endl;
+	cout << "horizontalPadding: " << horizontalPadding << endl;
+	cout << "verticalStride: " << verticalStride << endl;
+	cout << "horizontalStride: " << horizontalStride << endl;
+
 	// cpu implementation
+	float err = 0;
 	for (uint64_t i = 0; i < batchSize; i++)
 	{
 		for (uint64_t j = 0; j < outputFeatures; j++)
 		{
-			for (uint64_t k = 0; k < outputImageRows; k++)
+			for (uint64_t k = -verticalPadding; k < outputImageRows * verticalStride - verticalPadding; k += verticalStride)
 			{
-				for (uint64_t l = 0; l < outputImageCols; l++)
+				for (uint64_t l = -horizontalPadding; l < outputImageCols * horizontalStride - horizontalPadding; l += horizontalStride)
 				{
 					float sum = 0.0f;
 					for (uint64_t m = 0; m < inputFeatures; m++)
@@ -200,17 +207,40 @@ int main(int argc, char const* argv[]) {
 						{
 							for (uint64_t o = 0; o < filterCols; o++)
 							{
-								// didnt include padding, stride, or dilation for simplicity
-								//cout << "input[" << i << "][" << m << "][" << k * verticalStride + n * verticalDilation << "][" << l * horizontalStride + o * horizontalDilation << "] * filter[" << j << "][" << m << "][" << n << "][" << o << "] = " << input[i * inputFeatures * inputImageRows * inputImageCols + m * inputImageRows * inputImageCols + (k * verticalStride + n * verticalDilation) * inputImageCols + l * horizontalStride + o * horizontalDilation] << " * " << filter[j * inputFeatures * filterRows * filterCols + m * filterRows * filterCols + n * filterCols + o] << endl;
-								sum += input[i * inputFeatures * inputImageRows * inputImageCols + m * inputImageRows * inputImageCols + (k * verticalStride + n) * inputImageCols + (l * horizontalStride + o)] * filter[j * inputFeatures * filterRows * filterCols + m * filterRows * filterCols + n * filterCols + o];
+								if (k + n >= 0 && k + n < inputImageRows && l + o >= 0 && l + o < inputImageCols)
+								{
+									sum += input[i * inputFeatures * inputImageRows * inputImageCols + m * inputImageRows * inputImageCols + (k + n) * inputImageCols + (l + o)] * filter[j * inputFeatures * filterRows * filterCols + m * filterRows * filterCols + n * filterCols + o];
+								}
 							}
 						}
 					}
-					cout << sum << " vs " << output[i * outputFeatures * outputImageRows * outputImageCols + j * outputImageRows * outputImageCols + k * outputImageCols + l] << endl;
+					err += abs(sum - output[i * outputFeatures * outputImageRows * outputImageCols + j * outputImageRows * outputImageCols + (k + verticalPadding) / verticalStride * outputImageCols + (l + horizontalPadding) / horizontalStride]);
+					//cout << sum << " vs " << output[i * outputFeatures * outputImageRows * outputImageCols + j * outputImageRows * outputImageCols + (k + verticalPadding) / verticalStride * outputImageCols + (l + horizontalPadding) / horizontalStride] << endl;
 				}
+				//cout << endl;
 			}
+			//{
+			//	for (uint64_t l = 0; l < outputImageCols; l++)
+			//	{
+			//		float sum = 0.0f;
+			//		for (uint64_t m = 0; m < inputFeatures; m++)
+			//		{
+			//			for (uint64_t n = 0; n < filterRows; n++)
+			//			{
+			//				for (uint64_t o = 0; o < filterCols; o++)
+			//				{
+			//					// didnt include padding or dilation for simplicity
+			//					//cout << "input[" << i << "][" << m << "][" << k * verticalStride + n * verticalDilation << "][" << l * horizontalStride + o * horizontalDilation << "] * filter[" << j << "][" << m << "][" << n << "][" << o << "] = " << input[i * inputFeatures * inputImageRows * inputImageCols + m * inputImageRows * inputImageCols + (k * verticalStride + n * verticalDilation) * inputImageCols + l * horizontalStride + o * horizontalDilation] << " * " << filter[j * inputFeatures * filterRows * filterCols + m * filterRows * filterCols + n * filterCols + o] << endl;
+			//					sum += input[i * inputFeatures * inputImageRows * inputImageCols + m * inputImageRows * inputImageCols + (k * verticalStride + n) * inputImageCols + (l * horizontalStride + o)] * filter[j * inputFeatures * filterRows * filterCols + m * filterRows * filterCols + n * filterCols + o];
+			//				}
+			//			}
+			//		}
+			//		cout << sum << " vs " << output[i * outputFeatures * outputImageRows * outputImageCols + j * outputImageRows * outputImageCols + k * outputImageCols + l] << endl;
+			//	}
+			//}
 		}
 	}
+	cout << "error: " << err / (batchSize * outputFeatures * outputImageRows * outputImageCols) << endl;
 
 	cout << "end" << endl;
 }
