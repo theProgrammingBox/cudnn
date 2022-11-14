@@ -23,10 +23,10 @@ int main(int argc, char const* argv[]) {
 	const uint64_t batchSize = 1;			// unique images running in parallel
 	const uint64_t inputFeatures = 3;		// 3 image "features" for rgb
 	const uint64_t outputFeatures = 3;		// 3 output "features", they are the result of the convolution
-	const uint64_t inputImageRows = 3;		// height of the input images
-	const uint64_t inputImageCols = 3;		// width of the input images
-	const uint64_t outputImageRows = 3;	// height of the output images
-	const uint64_t outputImageCols = 3;	// width of the output images
+	const uint64_t inputImageRows = 4;		// height of the input images
+	const uint64_t inputImageCols = 4;		// width of the input images
+	const uint64_t outputImageRows = 2;	// height of the output images
+	const uint64_t outputImageCols = 2;	// width of the output images
 	const uint64_t filterRows = 3;			// assuming square filter for simplicity
 	const uint64_t filterCols = 3;			// assuming square filter for simplicity
 	
@@ -37,7 +37,7 @@ int main(int argc, char const* argv[]) {
 	cudnnTensorDescriptor_t input_descriptor;
 	cudnnCreateTensorDescriptor(&input_descriptor);
 	cudnnSetTensor4dDescriptor(input_descriptor,
-		/*format=*/CUDNN_TENSOR_NHWC,		// NHWC or NCHW
+		/*format=*/CUDNN_TENSOR_NCHW,		// NHWC or NCHW
 		/*dataType=*/CUDNN_DATA_FLOAT,		// data type
 		/*batch_size=*/batchSize,			// unique images running in parallel
 		/*channels=*/inputFeatures,			// number of "features" in each image like rgb in this case
@@ -50,7 +50,7 @@ int main(int argc, char const* argv[]) {
 	cudnnTensorDescriptor_t output_descriptor;
 	cudnnCreateTensorDescriptor(&output_descriptor);
 	cudnnSetTensor4dDescriptor(output_descriptor,
-		/*format=*/CUDNN_TENSOR_NHWC,
+		/*format=*/CUDNN_TENSOR_NCHW,
 		/*dataType=*/CUDNN_DATA_FLOAT,
 		/*batch_size=*/batchSize,			// same as input, expect a unique result for every unique input
 		/*channels=*/outputFeatures,		// number of filters being used on the input
@@ -200,7 +200,7 @@ int main(int argc, char const* argv[]) {
 						{
 							for (uint64_t o = 0; o < filterCols; o++)
 							{
-								cout << "input[" << i << "][" << m << "][" << k * verticalStride + n * verticalDilation << "][" << l * horizontalStride + o * horizontalDilation << "] * filter[" << j << "][" << m << "][" << n << "][" << o << "] = " << input[i * inputFeatures * inputImageRows * inputImageCols + m * inputImageRows * inputImageCols + (k * verticalStride + n * verticalDilation) * inputImageCols + l * horizontalStride + o * horizontalDilation] << " * " << filter[j * inputFeatures * filterRows * filterCols + m * filterRows * filterCols + n * filterCols + o] << endl;
+								//cout << "input[" << i << "][" << m << "][" << k * verticalStride + n * verticalDilation << "][" << l * horizontalStride + o * horizontalDilation << "] * filter[" << j << "][" << m << "][" << n << "][" << o << "] = " << input[i * inputFeatures * inputImageRows * inputImageCols + m * inputImageRows * inputImageCols + (k * verticalStride + n * verticalDilation) * inputImageCols + l * horizontalStride + o * horizontalDilation] << " * " << filter[j * inputFeatures * filterRows * filterCols + m * filterRows * filterCols + n * filterCols + o] << endl;
 								sum += input[i * inputFeatures * inputImageRows * inputImageCols + m * inputImageRows * inputImageCols + (k * verticalStride + n) * inputImageCols + (l * horizontalStride + o)] * filter[j * inputFeatures * filterRows * filterCols + m * filterRows * filterCols + n * filterCols + o];
 							}
 						}
