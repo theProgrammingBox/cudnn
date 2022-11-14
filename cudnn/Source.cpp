@@ -23,10 +23,10 @@ int main(int argc, char const* argv[]) {
 	const uint64_t batchSize = 1;			// unique images running in parallel
 	const uint64_t inputFeatures = 3;		// 3 image "features" for rgb
 	const uint64_t outputFeatures = 3;		// 3 output "features", they are the result of the convolution
-	const uint64_t inputImageRows = 64;		// height of the input images
-	const uint64_t inputImageCols = 64;		// width of the input images
-	const uint64_t outputImageRows = 64;	// height of the output images
-	const uint64_t outputImageCols = 64;	// width of the output images
+	const uint64_t inputImageRows = 3;		// height of the input images
+	const uint64_t inputImageCols = 3;		// width of the input images
+	const uint64_t outputImageRows = 3;	// height of the output images
+	const uint64_t outputImageCols = 3;	// width of the output images
 	const uint64_t filterRows = 3;			// assuming square filter for simplicity
 	const uint64_t filterCols = 3;			// assuming square filter for simplicity
 	
@@ -182,6 +182,33 @@ int main(int argc, char const* argv[]) {
 			cout << endl;
 		}
 		cout << endl;
+	}
+
+	// cpu implementation
+	for (uint64_t i = 0; i < batchSize; i++)
+	{
+		for (uint64_t j = 0; j < outputFeatures; j++)
+		{
+			for (uint64_t k = 0; k < outputImageRows; k++)
+			{
+				for (uint64_t l = 0; l < outputImageCols; l++)
+				{
+					float sum = 0.0f;
+					for (uint64_t m = 0; m < inputFeatures; m++)
+					{
+						for (uint64_t n = 0; n < filterRows; n++)
+						{
+							for (uint64_t o = 0; o < filterCols; o++)
+							{
+								cout << "input[" << i << "][" << m << "][" << k * verticalStride + n * verticalDilation << "][" << l * horizontalStride + o * horizontalDilation << "] * filter[" << j << "][" << m << "][" << n << "][" << o << "] = " << input[i * inputFeatures * inputImageRows * inputImageCols + m * inputImageRows * inputImageCols + (k * verticalStride + n * verticalDilation) * inputImageCols + l * horizontalStride + o * horizontalDilation] << " * " << filter[j * inputFeatures * filterRows * filterCols + m * filterRows * filterCols + n * filterCols + o] << endl;
+								sum += input[i * inputFeatures * inputImageRows * inputImageCols + m * inputImageRows * inputImageCols + (k * verticalStride + n) * inputImageCols + (l * horizontalStride + o)] * filter[j * inputFeatures * filterRows * filterCols + m * filterRows * filterCols + n * filterCols + o];
+							}
+						}
+					}
+					cout << sum << " vs " << output[i * outputFeatures * outputImageRows * outputImageCols + j * outputImageRows * outputImageCols + k * outputImageCols + l] << endl;
+				}
+			}
+		}
 	}
 
 	cout << "end" << endl;
