@@ -2,12 +2,16 @@
 #include <iostream>
 #include <assert.h>
 #include <algorithm>
+#include <stdlib.h>
+#include <time.h>
 
 using std::cout;
 using std::endl;
 using std::max;
 
 int main(int argc, char const* argv[]) {
+	srand(time(NULL));
+	
 	// creating handle, it combines every detail of a convolution we are about to specify
 	// into a single object describing the convolution
 	cudnnHandle_t cudnn;
@@ -96,28 +100,89 @@ int main(int argc, char const* argv[]) {
 	
 	// now we need a more detailed description of the convolution as well as the memory limitations
 
-	cudnnConvolutionFwdAlgo_t convolution_algorithm;
-	cudnnGetConvolutionForwardAlgorithm(cudnn,
-		input_descriptor,						// think of each image in the channels as the input nodes
-		kernel_descriptor,						// think of each filter as the weights from each input node to each output node
-		convolution_descriptor,					// convolution details
-		output_descriptor,						// think of each image in the channels as the output nodes
-		CUDNN_CONVOLUTION_FWD_PREFER_FASTEST,	// algorithm preference, i want the fastest one
-		/*memoryLimitInBytes=*/0,				// memory limit, 0 for no limit
-		&convolution_algorithm);				// outputs the algorithm
-	// it can return CUDNN_CONVOLUTION_FWD_ALGO_GEMM, CUDNN_CONVOLUTION_FWD_ALGO_FFT,
-	// CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD, etc
+	int requestedAlgoCount = 0;
+	cudnnGetConvolutionForwardAlgorithmMaxCount(cudnn, &requestedAlgoCount);
+	cudnnConvolutionFwdAlgoPerf_t* perfResults = new cudnnConvolutionFwdAlgoPerf_t[requestedAlgoCount];
+	cudnnFindConvolutionForwardAlgorithm(cudnn,
+		input_descriptor,
+		kernel_descriptor,
+		convolution_descriptor,
+		output_descriptor,
+		requestedAlgoCount,
+		&requestedAlgoCount,
+		perfResults);
 
-	// now we need to ask how much memory the algorithm needs
-	uint64_t workspace_bytes = 0;
+	// now we can choose the best algorithm by perfResults[0].algo
+	// next we need to allocate memory for the output
+	uint64_t workspaceBytes = 0;
+	void* workspace = nullptr;
 	cudnnGetConvolutionForwardWorkspaceSize(cudnn,
 		input_descriptor,
 		kernel_descriptor,
 		convolution_descriptor,
 		output_descriptor,
-		convolution_algorithm,
-		&workspace_bytes);
-	cout << "Workspace size: " << workspace_bytes << " bytes" << endl;
+		perfResults[0].algo,
+		&workspaceBytes);
+	cudaMalloc(&workspace, workspaceBytes);
+	
+	// now we can run the convolution
+	float alpha = 1.0f;
+	float beta = 0.0f;
+
+	// creating the random input, output, and filter data
+	float* input = new float[batchSize * inputFeatures * inputImageRows * inputImageCols];
+	float* output = new float[batchSize * outputFeatures * outputImageRows * outputImageCols];
+	float* filter = new float[outputFeatures * inputFeatures * filterRows * filterCols];
+	for (uint64_t i = 0; i < batchSize * inputFeatures * inputImageRows * inputImageCols; i++)
+		input[i] = rand() / float(RAND_MAX);
+	for (uint64_t i = 0; i < outputFeatures * inputFeatures * filterRows * filterCols; i++)
+		filter[i] = rand() / float(RAND_MAX);
+
+	// allocating memory on the gpu
+	float* gpuInput;
+	float* gpuOutput;
+	float* gpuFilter;
+	cudaMalloc(&gpuInput, batchSize * inputFeatures * inputImageRows * inputImageCols * sizeof(float));
+	cudaMalloc(&gpuOutput, batchSize * outputFeatures * outputImageRows * outputImageCols * sizeof(float));
+	cudaMalloc(&gpuFilter, outputFeatures * inputFeatures * filterRows * filterCols * sizeof(float));
+	cudaMemcpy(gpuInput, input, batchSize * inputFeatures * inputImageRows * inputImageCols * sizeof(float), cudaMemcpyHostToDevice);
+	cudaMemcpy(gpuFilter, filter, outputFeatures * inputFeatures * filterRows * filterCols * sizeof(float), cudaMemcpyHostToDevice);
+	
+	// running the convolution
+	cudnnConvolutionForward(cudnn,
+		&alpha,
+		input_descriptor,
+		gpuInput,
+		kernel_descriptor,
+		gpuFilter,
+		convolution_descriptor,
+		perfResults[0].algo,
+		workspace,
+		workspaceBytes,
+		&beta,
+		output_descriptor,
+		gpuOutput);
+
+	// copying the output back to the cpu
+	cudaMemcpy(output, gpuOutput, batchSize * outputFeatures * outputImageRows * outputImageCols * sizeof(float), cudaMemcpyDeviceToHost);
+	
+	// printing the output
+	for (uint64_t i = 0; i < batchSize; i++)
+	{
+		for (uint64_t j = 0; j < outputFeatures; j++)
+		{
+			for (uint64_t k = 0; k < outputImageRows; k++)
+			{
+				for (uint64_t l = 0; l < outputImageCols; l++)
+				{
+					cout << output[i * outputFeatures * outputImageRows * outputImageCols + j * outputImageRows * outputImageCols + k * outputImageCols + l] << " ";
+				}
+				cout << endl;
+			}
+			cout << endl;
+		}
+		cout << endl;
+	}
 
 	cout << "end" << endl;
 }
