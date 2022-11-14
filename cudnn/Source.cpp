@@ -94,11 +94,30 @@ int main(int argc, char const* argv[]) {
 	// there are a few convolution modes, cross correlation is the most common one
 	// convolution is the other one, it is the same as cross correlation but flips the filter
 	
-	// now we need a more detailed description of the convolution as well as the
-	// memory we are going to need to allocate for the convolution
+	// now we need a more detailed description of the convolution as well as the memory limitations
 
 	cudnnConvolutionFwdAlgo_t convolution_algorithm;
-	//
+	cudnnGetConvolutionForwardAlgorithm(cudnn,
+		input_descriptor,						// think of each image in the channels as the input nodes
+		kernel_descriptor,						// think of each filter as the weights from each input node to each output node
+		convolution_descriptor,					// convolution details
+		output_descriptor,						// think of each image in the channels as the output nodes
+		CUDNN_CONVOLUTION_FWD_PREFER_FASTEST,	// algorithm preference, i want the fastest one
+		/*memoryLimitInBytes=*/0,				// memory limit, 0 for no limit
+		&convolution_algorithm);				// outputs the algorithm
+	// it can return CUDNN_CONVOLUTION_FWD_ALGO_GEMM, CUDNN_CONVOLUTION_FWD_ALGO_FFT,
+	// CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD, etc
+
+	// now we need to ask how much memory the algorithm needs
+	uint64_t workspace_bytes = 0;
+	cudnnGetConvolutionForwardWorkspaceSize(cudnn,
+		input_descriptor,
+		kernel_descriptor,
+		convolution_descriptor,
+		output_descriptor,
+		convolution_algorithm,
+		&workspace_bytes);
+	cout << "Workspace size: " << workspace_bytes << " bytes" << endl;
 
 	cout << "end" << endl;
 }
