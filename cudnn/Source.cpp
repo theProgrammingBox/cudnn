@@ -200,6 +200,7 @@ int main(int argc, char const* argv[]) {
 						{
 							for (uint64_t o = 0; o < filterCols; o++)
 							{
+								// didnt include padding, stride, or dilation for simplicity
 								//cout << "input[" << i << "][" << m << "][" << k * verticalStride + n * verticalDilation << "][" << l * horizontalStride + o * horizontalDilation << "] * filter[" << j << "][" << m << "][" << n << "][" << o << "] = " << input[i * inputFeatures * inputImageRows * inputImageCols + m * inputImageRows * inputImageCols + (k * verticalStride + n * verticalDilation) * inputImageCols + l * horizontalStride + o * horizontalDilation] << " * " << filter[j * inputFeatures * filterRows * filterCols + m * filterRows * filterCols + n * filterCols + o] << endl;
 								sum += input[i * inputFeatures * inputImageRows * inputImageCols + m * inputImageRows * inputImageCols + (k * verticalStride + n) * inputImageCols + (l * horizontalStride + o)] * filter[j * inputFeatures * filterRows * filterCols + m * filterRows * filterCols + n * filterCols + o];
 							}
