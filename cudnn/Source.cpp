@@ -251,7 +251,19 @@ int main(int argc, char const* argv[]) {
 		cudnnConvolutionDescriptor_t convolution_descriptor;
 		cudnnCreateConvolutionDescriptor(&convolution_descriptor);
 		cudnnSetConvolution2dDescriptor(convolution_descriptor, 0, 0, 1, 1, 1, 1, CUDNN_CROSS_CORRELATION, CUDNN_DATA_FLOAT);
-		
+
+		int requestedAlgoCount = 0;
+		cudnnGetConvolutionForwardAlgorithmMaxCount(cudnnHandle, &requestedAlgoCount);
+		cudnnConvolutionFwdAlgoPerf_t* perfResults = new cudnnConvolutionFwdAlgoPerf_t[requestedAlgoCount];
+		cudnnFindConvolutionForwardAlgorithm(cudnnHandle,
+			input_descriptor,
+			kernel_descriptor,
+			convolution_descriptor,
+			output_descriptor,
+			requestedAlgoCount,
+			&requestedAlgoCount,
+			perfResults);
+
 		// getting the workspace size
 		uint64_t workspaceBytes = 0;
 		void* workspace = nullptr;
