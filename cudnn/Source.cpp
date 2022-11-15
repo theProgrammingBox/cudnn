@@ -139,12 +139,20 @@ int main()
 	float alpha = 1.0f;
 	float beta = 0.0f;
 	cudnnConvolutionForward(handle, &alpha, inputDescriptor, gpuInput, weightDescriptor, gpuWeights, convolutionDescriptor, bestAlgorithm, workspace, workspaceBytes, &beta, outputDescriptor, gpuOutput);
-	cudaMemcpy(output, gpuOutput, batchSize * outputFeatures * sizeof(float), cudaMemcpyDeviceToHost);
 	cudaEventCreate(&stop);
 	cudaEventRecord(stop, 0);
 	cudaEventSynchronize(stop);
 	cudaEventElapsedTime(&elapsedTime, start, stop);
 	cout << "cudnnConvolutionForward: " << elapsedTime << " ms" << endl;
+
+	cudaEventCreate(&start);
+	cudaEventRecord(start, 0);
+	cudaMemcpy(output, gpuOutput, batchSize * outputFeatures * sizeof(float), cudaMemcpyDeviceToHost);
+	cudaEventCreate(&stop);
+	cudaEventRecord(stop, 0);
+	cudaEventSynchronize(stop);
+	cudaEventElapsedTime(&elapsedTime, start, stop);
+	cout << "gpu memory cudaMemcpy: " << elapsedTime << " ms" << endl;
 	
 	/*for (size_t i = 0; i < batchSize; i++)
 	{
