@@ -15,9 +15,9 @@ int main()
 	const size_t inputFeatures = 1024;
 	const size_t outputFeatures = 2048;
 
-	float* input = new float[batchSize * inputFeatures];		// Input data
-	float* weights = new float[outputFeatures * inputFeatures];	// Weights, but stored transposed
-	float* output = new float[batchSize * outputFeatures];		// Output data
+	//float* input = new float[batchSize * inputFeatures];		// Input data
+	//float* weights = new float[outputFeatures * inputFeatures];	// Weights, but stored transposed
+	//float* output = new float[batchSize * outputFeatures];		// Output data
 
 	cudnnHandle_t handle;
 	cudnnCreate(&handle);
@@ -75,10 +75,10 @@ int main()
 	cudaEventRecord(start, 0);
 	int maxAlgorithms;
 	cudnnGetConvolutionForwardAlgorithmMaxCount(handle, &maxAlgorithms);
-	cudnnConvolutionFwdAlgoPerf_t* algorithms = new cudnnConvolutionFwdAlgoPerf_t[maxAlgorithms];
-	cudnnFindConvolutionForwardAlgorithm(handle, inputDescriptor, weightDescriptor, convolutionDescriptor, outputDescriptor, maxAlgorithms, &maxAlgorithms, algorithms);
-	cudnnConvolutionFwdAlgo_t bestAlgorithm = algorithms[0].algo;
-	delete[] algorithms;
+	cudnnConvolutionFwdAlgoPerf_t* forwardPropagationAlgorithms = new cudnnConvolutionFwdAlgoPerf_t[maxAlgorithms];
+	cudnnFindConvolutionForwardAlgorithm(handle, inputDescriptor, weightDescriptor, convolutionDescriptor, outputDescriptor, maxAlgorithms, &maxAlgorithms, forwardPropagationAlgorithms);
+	cudnnConvolutionFwdAlgo_t bestForwardAlgorithm = forwardPropagationAlgorithms[0].algo;	// automatically sorted by fastest
+	delete[] forwardPropagationAlgorithms;
 	cudaEventCreate(&stop);
 	cudaEventRecord(stop, 0);
 	cudaEventSynchronize(stop);
@@ -88,7 +88,7 @@ int main()
 	cudaEventCreate(&start);
 	cudaEventRecord(start, 0);
 	size_t workspaceBytes;
-	cudnnGetConvolutionForwardWorkspaceSize(handle, inputDescriptor, weightDescriptor, convolutionDescriptor, outputDescriptor, bestAlgorithm, &workspaceBytes);
+	cudnnGetConvolutionForwardWorkspaceSize(handle, inputDescriptor, weightDescriptor, convolutionDescriptor, outputDescriptor, bestForwardAlgorithm, &workspaceBytes);
 	void* workspace;
 	cudaMalloc(&workspace, workspaceBytes);
 	cudaEventCreate(&stop);
@@ -124,7 +124,7 @@ int main()
 	cudaEventElapsedTime(&elapsedTime, start, stop);
 	cout << "curandGenerateNormal: " << elapsedTime << " ms" << endl;
 	
-	cudaEventCreate(&start);
+	/*cudaEventCreate(&start);
 	cudaEventRecord(start, 0);
 	cudaMemcpy(input, gpuInput, batchSize * inputFeatures * sizeof(float), cudaMemcpyDeviceToHost);
 	cudaMemcpy(weights, gpuWeights, outputFeatures * inputFeatures * sizeof(float), cudaMemcpyDeviceToHost);
@@ -132,61 +132,81 @@ int main()
 	cudaEventRecord(stop, 0);
 	cudaEventSynchronize(stop);
 	cudaEventElapsedTime(&elapsedTime, start, stop);
-	cout << "gpu memory cudaMemcpy: " << elapsedTime << " ms" << endl;
+	cout << "gpu memory cudaMemcpy: " << elapsedTime << " ms" << endl;*/
 	
 	cudaEventCreate(&start);
 	cudaEventRecord(start, 0);
 	float alpha = 1.0f;
 	float beta = 0.0f;
-	cudnnConvolutionForward(handle, &alpha, inputDescriptor, gpuInput, weightDescriptor, gpuWeights, convolutionDescriptor, bestAlgorithm, workspace, workspaceBytes, &beta, outputDescriptor, gpuOutput);
+	cudnnConvolutionForward(handle, &alpha, inputDescriptor, gpuInput, weightDescriptor, gpuWeights, convolutionDescriptor, bestForwardAlgorithm, workspace, workspaceBytes, &beta, outputDescriptor, gpuOutput);
 	cudaEventCreate(&stop);
 	cudaEventRecord(stop, 0);
 	cudaEventSynchronize(stop);
 	cudaEventElapsedTime(&elapsedTime, start, stop);
 	cout << "cudnnConvolutionForward: " << elapsedTime << " ms" << endl;
 
-	cudaEventCreate(&start);
+	/*cudaEventCreate(&start);
 	cudaEventRecord(start, 0);
 	cudaMemcpy(output, gpuOutput, batchSize * outputFeatures * sizeof(float), cudaMemcpyDeviceToHost);
 	cudaEventCreate(&stop);
 	cudaEventRecord(stop, 0);
 	cudaEventSynchronize(stop);
 	cudaEventElapsedTime(&elapsedTime, start, stop);
-	cout << "gpu memory cudaMemcpy: " << elapsedTime << " ms" << endl;
-	
-	/*for (size_t i = 0; i < batchSize; i++)
-	{
-		for (size_t j = 0; j < outputFeatures; j++)
-		{
-			cout << output[i * outputFeatures + j] << " ";
-		}
-		cout << endl;
-	}*/
-	
+	cout << "gpu memory cudaMemcpy: " << elapsedTime << " ms" << endl;*/
+
+	// backpropagation
 	cudaEventCreate(&start);
 	cudaEventRecord(start, 0);
-	float error = 0.0f;
-	for (size_t i = 0; i < batchSize; i++)
-	{
-		for (size_t j = 0; j < outputFeatures; j++)
-		{
-			float sum = 0.0f;
-			for (size_t k = 0; k < inputFeatures; k++)
-			{
-				sum += input[i * inputFeatures + k] * weights[j * inputFeatures + k];
-			}
-			//cout << sum << " ";
-			//error += abs(sum - output[i * outputFeatures + j]);
-		}
-		//cout << endl;
-	}
+	cudnnConvolutionBwdDataAlgoPerf_t* backwardPropogationAlgorithms = new cudnnConvolutionBwdDataAlgoPerf_t[maxAlgorithms];
+	cudnnFindConvolutionBackwardDataAlgorithm(handle, weightDescriptor, outputDescriptor, convolutionDescriptor, inputDescriptor, maxAlgorithms, &maxAlgorithms, backwardPropogationAlgorithms);
+	cudnnConvolutionBwdDataAlgo_t bestBackwardAlgorithm = backwardPropogationAlgorithms[0].algo;	// automatically sorted by fastest
+	delete[] backwardPropogationAlgorithms;
 	cudaEventCreate(&stop);
 	cudaEventRecord(stop, 0);
 	cudaEventSynchronize(stop);
 	cudaEventElapsedTime(&elapsedTime, start, stop);
-	cout << "cpu convolution: " << elapsedTime << " ms" << endl;
-	//cout << "Error: " << error / (batchSize * outputFeatures) << endl;
+	cout << "cudnnFindConvolutionBackwardDataAlgorithm: " << elapsedTime << " ms" << endl;
+	
+	cudaEventCreate(&start);
+	cudaEventRecord(start, 0);
+	cudnnGetConvolutionBackwardDataWorkspaceSize(handle, weightDescriptor, outputDescriptor, convolutionDescriptor, inputDescriptor, bestBackwardAlgorithm, &workspaceBytes);
+	cudaFree(workspace);
+	cudaMalloc(&workspace, workspaceBytes);
+	cudaEventCreate(&stop);
+	cudaEventRecord(stop, 0);
+	cudaEventSynchronize(stop);
+	cudaEventElapsedTime(&elapsedTime, start, stop);
+	cout << "workspace cudaMalloc: " << elapsedTime << " ms" << endl;
+	
+	cudaEventCreate(&start);
+	cudaEventRecord(start, 0);
+	float* gpuBackpropogationOutput;
+	cudaMalloc(&gpuBackpropogationOutput, batchSize* inputFeatures * sizeof(float));
+	cudaEventCreate(&stop);
+	cudaEventRecord(stop, 0);
+	cudaEventSynchronize(stop);
+	cudaEventElapsedTime(&elapsedTime, start, stop);
+	cout << "gpu memory cudaMalloc: " << elapsedTime << " ms" << endl;
+	
+	cudaEventCreate(&start);
+	cudaEventRecord(start, 0);
+	curandGenerateNormal(randomGenerator, gpuBackpropogationOutput, batchSize* inputFeatures + (batchSize * inputFeatures & 2), 0, 1);
+	cudaEventCreate(&stop);
+	cudaEventRecord(stop, 0);
+	cudaEventSynchronize(stop);
+	cudaEventElapsedTime(&elapsedTime, start, stop);
+	cout << "curandGenerateNormal: " << elapsedTime << " ms" << endl;
+	
+	cudaEventCreate(&start);
+	cudaEventRecord(start, 0);
+	cudnnConvolutionBackwardData(handle, &alpha, weightDescriptor, gpuWeights, outputDescriptor, gpuOutput, convolutionDescriptor, bestBackwardAlgorithm, workspace, workspaceBytes, &beta, inputDescriptor, gpuBackpropogationOutput);
+	cudaEventCreate(&stop);
+	cudaEventRecord(stop, 0);
+	cudaEventSynchronize(stop);
+	cudaEventElapsedTime(&elapsedTime, start, stop);
+	cout << "cudnnConvolutionBackwardData: " << elapsedTime << " ms" << endl;
 
+	// cleanup
 	cudaFree(gpuInput);
 	cudaFree(gpuWeights);
 	cudaFree(gpuOutput);
@@ -200,6 +220,10 @@ int main()
 	///
 	
 	cudnnDestroy(handle);
+
+	/*
+	make handle, workspace, initial input and output on the main modeler
+	*/
 	
 	return 0;
 }
