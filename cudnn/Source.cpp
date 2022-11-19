@@ -15,8 +15,8 @@ using std::chrono::nanoseconds;
 int main()
 {
 	const size_t batchSize = 1 << 12;
-	const size_t inputFeatures = 1 << 8;
-	const size_t outputFeatures = 1 << 8;
+	const size_t inputFeatures = 1 << 12;
+	const size_t outputFeatures = 1 << 12;
 	const size_t trainingIterations = 1000;
 	const float learningRate = 0.01f;
 	const float updateScale = learningRate / batchSize;
