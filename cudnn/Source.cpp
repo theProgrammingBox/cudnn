@@ -96,6 +96,7 @@ int main()
 		1,
 		1);
 
+	// weight is stored transposed
 	cudaMalloc(&gpuWeight, weightBytes);
 	cudaMalloc(&gpuWeightGradient, weightBytes);
 	curandGenerateNormal(
@@ -259,51 +260,6 @@ int main()
 		gpuOutput);
 
 
-
-	cudaMemcpy(gpuOutputGradient, gpuInput, inputBytes, cudaMemcpyDeviceToDevice);
-
-	cublasSaxpy(cublasHandle, outputSize, &minusOne, gpuOutput, 1, gpuOutputGradient, 1);
-	
-	cudnnConvolutionBackwardData(
-		cudnnHandle,
-		&one,
-		weightDescriptor,
-		gpuWeight,
-		outputDescriptor,
-		gpuOutputGradient,
-		propagationDescriptor,
-		bestInputBackwardPropagationAlgorithm,
-		gpuWorkspace,
-		workspaceBytes,
-		&zero,
-		inputDescriptor,
-		gpuInputGradient);
-
-	cudnnConvolutionBackwardFilter(
-		cudnnHandle,
-		&one,
-		inputDescriptor,
-		gpuInput,
-		outputDescriptor,
-		gpuOutputGradient,
-		propagationDescriptor,
-		bestWeightBackwardPropagationAlgorithm,
-		gpuWorkspace,
-		workspaceBytes,
-		&zero,
-		weightDescriptor,
-		gpuWeightGradient);
-
-	cudnnConvolutionBackwardBias(
-		cudnnHandle,
-		&one,
-		outputDescriptor,
-		gpuOutputGradient,
-		&zero,
-		biasDescriptor,
-		gpuBiasGradient);
-
-
 	
 	float* cpuInput = new float[inputSize];
 	cudaMemcpy(cpuInput, gpuInput, inputBytes, cudaMemcpyDeviceToHost);
@@ -375,6 +331,51 @@ int main()
 	}
 	cout << endl;
 	cout << "error: " << err / (batchSize * outputFeatures) << endl << endl;
+
+
+
+	cudaMemcpy(gpuOutputGradient, gpuInput, inputBytes, cudaMemcpyDeviceToDevice);
+
+	cublasSaxpy(cublasHandle, outputSize, &minusOne, gpuOutput, 1, gpuOutputGradient, 1);
+	
+	cudnnConvolutionBackwardData(
+		cudnnHandle,
+		&one,
+		weightDescriptor,
+		gpuWeight,
+		outputDescriptor,
+		gpuOutputGradient,
+		propagationDescriptor,
+		bestInputBackwardPropagationAlgorithm,
+		gpuWorkspace,
+		workspaceBytes,
+		&zero,
+		inputDescriptor,
+		gpuInputGradient);
+
+	cudnnConvolutionBackwardFilter(
+		cudnnHandle,
+		&one,
+		inputDescriptor,
+		gpuInput,
+		outputDescriptor,
+		gpuOutputGradient,
+		propagationDescriptor,
+		bestWeightBackwardPropagationAlgorithm,
+		gpuWorkspace,
+		workspaceBytes,
+		&zero,
+		weightDescriptor,
+		gpuWeightGradient);
+
+	cudnnConvolutionBackwardBias(
+		cudnnHandle,
+		&one,
+		outputDescriptor,
+		gpuOutputGradient,
+		&zero,
+		biasDescriptor,
+		gpuBiasGradient);
 
 	
 
