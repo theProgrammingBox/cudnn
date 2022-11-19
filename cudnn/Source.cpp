@@ -15,8 +15,8 @@ using std::chrono::nanoseconds;
 int main()
 {
 	const size_t batchSize = 1;
-	const size_t inputFeatures = 4;
-	const size_t outputFeatures = 4;
+	const size_t inputFeatures = 3;
+	const size_t outputFeatures = 3;
 
 	const size_t inputSize = batchSize * inputFeatures;
 	const size_t weightSize = outputFeatures * inputFeatures;
@@ -28,37 +28,48 @@ int main()
 	const size_t biasBytes = biasSize * sizeof(float);
 	const size_t outputBytes = outputSize * sizeof(float);
 
-	const float alpha = 1.0f;
-	const float beta = 0.0f;
+	const float one = 1.0f;
+	const float zero = 0.0f;
+	const float minusOne = -1.0f;
 
 	curandGenerator_t randomGenerator;
 	cudnnHandle_t cudnnHandle;
 	cublasHandle_t cublasHandle;
 
 	float* gpuInput;
+	float* gpuInputGradient;
 	cudnnTensorDescriptor_t inputDescriptor;
 	
 	float* gpuWeight;
+	float* gpuWeightGradient;
 	cudnnFilterDescriptor_t weightDescriptor;
 	
 	float* gpuBias;
+	float* gpuBiasGradient;
 	cudnnTensorDescriptor_t biasDescriptor;
 	
 	float* gpuOutput;
+	float* gpuOutputGradient;
 	cudnnTensorDescriptor_t outputDescriptor;
 	
 	cudnnConvolutionDescriptor_t propagationDescriptor;
 
 	int maxForwardPropagationAlgorithms;
-	cudnnGetConvolutionForwardAlgorithmMaxCount(cudnnHandle, &maxForwardPropagationAlgorithms);
+	cudnnGetConvolutionForwardAlgorithmMaxCount(
+		cudnnHandle, 
+		&maxForwardPropagationAlgorithms);
 	cudnnConvolutionFwdAlgo_t bestForwardPropagationAlgorithm;
 
 	int maxWeightBackwardPropagationAlgorithms;
-	cudnnGetConvolutionBackwardFilterAlgorithmMaxCount(cudnnHandle, &maxWeightBackwardPropagationAlgorithms);
+	cudnnGetConvolutionBackwardFilterAlgorithmMaxCount(
+		cudnnHandle, 
+		&maxWeightBackwardPropagationAlgorithms);
 	cudnnConvolutionBwdFilterAlgo_t bestWeightBackwardPropagationAlgorithm;
 	
 	int maxInputBackwardPropagationAlgorithms;
-	cudnnGetConvolutionBackwardDataAlgorithmMaxCount(cudnnHandle, &maxInputBackwardPropagationAlgorithms);
+	cudnnGetConvolutionBackwardDataAlgorithmMaxCount(
+		cudnnHandle, 
+		&maxInputBackwardPropagationAlgorithms);
 	cudnnConvolutionBwdDataAlgo_t bestInputBackwardPropagationAlgorithm;
 
 	size_t workspaceBytes = 0;
@@ -67,11 +78,14 @@ int main()
 	
 
 	curandCreateGenerator(&randomGenerator, CURAND_RNG_PSEUDO_DEFAULT);
-	curandSetPseudoRandomGeneratorSeed(randomGenerator, duration_cast<nanoseconds>(high_resolution_clock::now().time_since_epoch()).count());
+	curandSetPseudoRandomGeneratorSeed(
+		randomGenerator, 
+		duration_cast<nanoseconds>(high_resolution_clock::now().time_since_epoch()).count());
 	cudnnCreate(&cudnnHandle);
 	cublasCreate(&cublasHandle);
 
 	cudaMalloc(&gpuInput, inputBytes);
+	cudaMalloc(&gpuInputGradient, inputBytes);
 	cudnnCreateTensorDescriptor(&inputDescriptor);
 	cudnnSetTensor4dDescriptor(
 		inputDescriptor,
@@ -83,7 +97,13 @@ int main()
 		1);
 
 	cudaMalloc(&gpuWeight, weightBytes);
-	curandGenerateNormal(randomGenerator, gpuWeight, weightSize + (weightSize & 1), 0, 1);
+	cudaMalloc(&gpuWeightGradient, weightBytes);
+	curandGenerateNormal(
+		randomGenerator, 
+		gpuWeight, 
+		weightSize + (weightSize & 1), 
+		0, 
+		1);
 	cudnnCreateFilterDescriptor(&weightDescriptor);
 	cudnnSetFilter4dDescriptor(
 		weightDescriptor,
@@ -95,7 +115,13 @@ int main()
 		1);
 
 	cudaMalloc(&gpuBias, biasBytes);
-	curandGenerateNormal(randomGenerator, gpuBias, biasSize + (biasSize & 1), 0, 1);
+	cudaMalloc(&gpuBiasGradient, biasBytes);
+	curandGenerateNormal(
+		randomGenerator, 
+		gpuBias, 
+		biasSize + (biasSize & 1), 
+		0, 
+		1);
 	cudnnCreateTensorDescriptor(&biasDescriptor);
 	cudnnSetTensor4dDescriptor(
 		biasDescriptor,
@@ -107,6 +133,7 @@ int main()
 		1);
 
 	cudaMalloc(&gpuOutput, outputBytes);
+	cudaMalloc(&gpuOutputGradient, outputBytes);
 	cudnnCreateTensorDescriptor(&outputDescriptor);
 	cudnnSetTensor4dDescriptor(
 		outputDescriptor,
@@ -200,10 +227,16 @@ int main()
 	
 	
 	
-	curandGenerateNormal(randomGenerator, gpuInput, inputSize + (inputSize & 1), 0, 1);
+	curandGenerateNormal(
+		randomGenerator, 
+		gpuInput, 
+		inputSize + (inputSize & 1), 
+		0, 
+		1);
+	
 	cudnnConvolutionForward(
 		cudnnHandle,
-		&alpha,
+		&one,
 		inputDescriptor,
 		gpuInput,
 		weightDescriptor,
@@ -212,22 +245,108 @@ int main()
 		bestForwardPropagationAlgorithm,
 		gpuWorkspace,
 		workspaceBytes,
-		&beta,
+		&zero,
 		outputDescriptor,
 		gpuOutput);
 	
 	cudnnAddTensor(
 		cudnnHandle,
-		&alpha,
+		&one,
 		biasDescriptor,
 		gpuBias,
-		&alpha,
+		&one,
 		outputDescriptor,
 		gpuOutput);
 
+
+
+	cudaMemcpy(gpuOutputGradient, gpuInput, inputBytes, cudaMemcpyDeviceToDevice);
+
+	cublasSaxpy(cublasHandle, outputSize, &minusOne, gpuOutput, 1, gpuOutputGradient, 1);
+	
+	cudnnConvolutionBackwardData(
+		cudnnHandle,
+		&one,
+		weightDescriptor,
+		gpuWeight,
+		outputDescriptor,
+		gpuOutputGradient,
+		propagationDescriptor,
+		bestInputBackwardPropagationAlgorithm,
+		gpuWorkspace,
+		workspaceBytes,
+		&zero,
+		inputDescriptor,
+		gpuInputGradient);
+
+	cudnnConvolutionBackwardFilter(
+		cudnnHandle,
+		&one,
+		inputDescriptor,
+		gpuInput,
+		outputDescriptor,
+		gpuOutputGradient,
+		propagationDescriptor,
+		bestWeightBackwardPropagationAlgorithm,
+		gpuWorkspace,
+		workspaceBytes,
+		&zero,
+		weightDescriptor,
+		gpuWeightGradient);
+
+	cudnnConvolutionBackwardBias(
+		cudnnHandle,
+		&one,
+		outputDescriptor,
+		gpuOutputGradient,
+		&zero,
+		biasDescriptor,
+		gpuBiasGradient);
+
+
+	
+	float* cpuInput = new float[inputSize];
+	cudaMemcpy(cpuInput, gpuInput, inputBytes, cudaMemcpyDeviceToHost);
+	
+	float* cpuWeight = new float[weightSize];
+	cudaMemcpy(cpuWeight, gpuWeight, weightBytes, cudaMemcpyDeviceToHost);
+	
+	float* cpuBias = new float[outputFeatures];
+	cudaMemcpy(cpuBias, gpuBias, biasBytes, cudaMemcpyDeviceToHost);
+
 	float* cpuOutput = new float[outputSize];
 	cudaMemcpy(cpuOutput, gpuOutput, outputBytes, cudaMemcpyDeviceToHost);
+	
+	cout << "Input:" << endl;
+	for (size_t i = 0; i < batchSize; i++)
+	{
+		for (size_t j = 0; j < inputFeatures; j++)
+		{
+			cout << cpuInput[i * inputFeatures + j] << " ";
+		}
+		cout << endl;
+	}
+	cout << endl;
+	
+	cout << "Weight:" << endl;
+	for (size_t i = 0; i < inputFeatures; i++)
+	{
+		for (size_t j = 0; j < outputFeatures; j++)
+		{
+			cout << cpuWeight[i * outputFeatures + j] << " ";
+		}
+		cout << endl;
+	}
+	cout << endl;
+	
+	cout << "Bias:" << endl;
+	for (size_t i = 0; i < outputFeatures; i++)
+	{
+		cout << cpuBias[i] << " ";
+	}
+	cout << endl << endl;
 
+	cout << "Output:" << endl;
 	for (size_t i = 0; i < batchSize; i++)
 	{
 		for (size_t j = 0; j < outputFeatures; j++)
@@ -237,16 +356,8 @@ int main()
 		cout << endl;
 	}
 	cout << endl;
-
-	float* cpuInput = new float[inputSize];
-	cudaMemcpy(cpuInput, gpuInput, inputBytes, cudaMemcpyDeviceToHost);
 	
-	float* cpuWeight = new float[weightSize];
-	cudaMemcpy(cpuWeight, gpuWeight, weightBytes, cudaMemcpyDeviceToHost);
-	
-	float* cpuBias = new float[outputFeatures];
-	cudaMemcpy(cpuBias, gpuBias, biasBytes, cudaMemcpyDeviceToHost);
-	
+	cout << "Manual output:" << endl;
 	float err = 0.0f;
 	for (size_t i = 0; i < batchSize; i++)
 	{
@@ -264,6 +375,128 @@ int main()
 	}
 	cout << endl;
 	cout << "error: " << err / (batchSize * outputFeatures) << endl << endl;
+
+	
+
+	float* cpuInputGradient = new float[inputSize];
+	cudaMemcpy(cpuInputGradient, gpuInputGradient, inputBytes, cudaMemcpyDeviceToHost);
+
+	float* cpuWeightGradient = new float[weightSize];
+	cudaMemcpy(cpuWeightGradient, gpuWeightGradient, weightBytes, cudaMemcpyDeviceToHost);
+
+	float* cpuBiasGradient = new float[outputFeatures];
+	cudaMemcpy(cpuBiasGradient, gpuBiasGradient, biasBytes, cudaMemcpyDeviceToHost);
+
+	float* cpuOutputGradient = new float[outputSize];
+	cudaMemcpy(cpuOutputGradient, gpuOutputGradient, outputBytes, cudaMemcpyDeviceToHost);
+
+	cout << "Output gradient:" << endl;
+	for (size_t i = 0; i < batchSize; i++)
+	{
+		for (size_t j = 0; j < outputFeatures; j++)
+		{
+			cout << cpuOutputGradient[i * outputFeatures + j] << " ";
+		}
+		cout << endl;
+	}
+	cout << endl;
+	
+	cout << "Manual output gradient:" << endl;
+	err = 0.0f;
+	for (size_t i = 0; i < batchSize; i++)
+	{
+		for (size_t j = 0; j < outputFeatures; j++)
+		{
+			float sum = cpuInput[i * outputFeatures + j] - cpuOutput[i * outputFeatures + j];
+			cout << sum << " ";
+			err += abs(sum - cpuOutputGradient[i * outputFeatures + j]);
+		}
+		cout << endl;
+	}
+	cout << endl;
+	cout << "error: " << err / (batchSize * outputFeatures) << endl << endl;
+
+	cout << "Bias gradient:" << endl;
+	for (size_t i = 0; i < outputFeatures; i++)
+	{
+		cout << cpuBiasGradient[i] << " ";
+	}
+	cout << endl << endl;
+	
+	cout << "Manual bias gradient:" << endl;
+	err = 0.0f;
+	for (size_t i = 0; i < outputFeatures; i++)
+	{
+		float sum = 0.0f;
+		for (size_t j = 0; j < batchSize; j++)
+		{
+			sum += cpuOutputGradient[j * outputFeatures + i];
+		}
+		cout << sum << " ";
+		err += abs(sum - cpuBiasGradient[i]);
+	}
+	cout << endl << endl;
+	cout << "error: " << err / outputFeatures << endl << endl;
+
+	cout << "Weight gradient:" << endl;
+	for (size_t i = 0; i < inputFeatures; i++)
+	{
+		for (size_t j = 0; j < outputFeatures; j++)
+		{
+			cout << cpuWeightGradient[i * outputFeatures + j] << " ";
+		}
+		cout << endl;
+	}
+	cout << endl;
+
+	cout << "Manual weight gradient:" << endl;
+	err = 0.0f;
+	for (size_t i = 0; i < outputFeatures; i++)
+	{
+		for (size_t j = 0; j < inputFeatures; j++)
+		{
+			float sum = 0.0f;
+			for (size_t m = 0; m < batchSize; m++)
+			{
+				sum += cpuInput[m * inputFeatures + j] * cpuOutputGradient[m * outputFeatures + i];
+			}
+			cout << sum << " ";
+			err += abs(sum - cpuWeightGradient[i * inputFeatures + j]);
+		}
+		cout << endl;
+	}
+	cout << endl;
+	cout << "error: " << err / (inputFeatures * outputFeatures) << endl << endl;
+	
+	cout << "Input gradient:" << endl;
+	for (size_t i = 0; i < batchSize; i++)
+	{
+		for (size_t j = 0; j < inputFeatures; j++)
+		{
+			cout << cpuInputGradient[i * inputFeatures + j] << " ";
+		}
+		cout << endl;
+	}
+	cout << endl;
+
+	cout << "Manual input gradient:" << endl;
+	err = 0.0f;
+	for (size_t i = 0; i < batchSize; i++)
+	{
+		for (size_t j = 0; j < inputFeatures; j++)
+		{
+			float sum = 0.0f;
+			for (size_t m = 0; m < outputFeatures; m++)
+			{
+				sum += cpuWeight[m * inputFeatures + j] * cpuOutputGradient[i * outputFeatures + m];
+			}
+			cout << sum << " ";
+			err += abs(sum - cpuInputGradient[i * inputFeatures + j]);
+		}
+		cout << endl;
+	}
+	cout << endl;
+	cout << "error: " << err / (batchSize * inputFeatures) << endl << endl;
 
 	return 0;
 }
