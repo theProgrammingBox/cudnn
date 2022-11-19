@@ -186,7 +186,8 @@ int main()
 	cudaMalloc(&gpuWorkspace, workspaceBytes);
 
 	
-	
+
+	float* cpuOutputGradient = new float[outputSize];
 	size_t iterations = trainingIterations;
 	while (iterations--)
 	{
@@ -258,17 +259,42 @@ int main()
 		cublasSaxpy(cublasHandle, weightSize, &updateScale, gpuWeightGradient, 1, gpuWeight, 1);
 		cublasSaxpy(cublasHandle, biasSize, &updateScale, gpuBiasGradient, 1, gpuBias, 1);
 		
-		float* cpuOutputGradient = new float[outputSize];
 		cudaMemcpy(cpuOutputGradient, gpuOutputGradient, outputBytes, cudaMemcpyDeviceToHost);
 		
 		float averageOutputGradient = 0;
 		for (int i = 0; i < outputSize; i++)
 			averageOutputGradient += abs(cpuOutputGradient[i]);
 		averageOutputGradient /= outputSize;
-		delete[] cpuOutputGradient;
 
 		cout << "Average output gradient: " << averageOutputGradient << endl;
 	}
+	delete[] cpuOutputGradient;
+
+	
+	
+	cudaFree(gpuInput);
+	cudaFree(gpuInputGradient);
+	cudnnDestroyTensorDescriptor(inputDescriptor);
+	
+	cudaFree(gpuWeight);
+	cudaFree(gpuWeightGradient);
+	cudnnDestroyFilterDescriptor(weightDescriptor);
+	
+	cudaFree(gpuBias);
+	cudaFree(gpuBiasGradient);
+	cudnnDestroyTensorDescriptor(biasDescriptor);
+	
+	cudaFree(gpuOutput);
+	cudaFree(gpuOutputGradient);
+	cudnnDestroyTensorDescriptor(outputDescriptor);
+	
+	cudnnDestroyConvolutionDescriptor(propagationDescriptor);
+	
+	cudaFree(gpuWorkspace);
+	
+	cudnnDestroy(cudnnHandle);
+	cublasDestroy(cublasHandle);
+	curandDestroyGenerator(randomGenerator);
 
 
 
