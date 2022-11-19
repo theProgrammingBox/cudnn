@@ -17,6 +17,7 @@ int main()
 	const size_t batchSize = 1;
 	const size_t inputFeatures = 3;
 	const size_t outputFeatures = 3;
+	const float learningRate = 0.01f;
 
 	const size_t inputSize = batchSize * inputFeatures;
 	const size_t weightSize = outputFeatures * inputFeatures;
@@ -498,6 +499,33 @@ int main()
 	}
 	cout << endl;
 	cout << "error: " << err / (batchSize * inputFeatures) << endl << endl;
+
+	
+	
+	cublasSaxpy(cublasHandle, weightSize, &learningRate, gpuWeightGradient, 1, gpuWeight, 1);
+	cublasSaxpy(cublasHandle, biasSize, &learningRate, gpuBiasGradient, 1, gpuBias, 1);
+
+
+	
+	cudaMemcpy(cpuWeight, gpuWeight, weightBytes, cudaMemcpyDeviceToHost);
+	cout << "Weight:" << endl;
+	for (size_t i = 0; i < inputFeatures; i++)
+	{
+		for (size_t j = 0; j < outputFeatures; j++)
+		{
+			cout << cpuWeight[i * outputFeatures + j] << " ";
+		}
+		cout << endl;
+	}
+	cout << endl;
+	
+	cudaMemcpy(cpuBias, gpuBias, biasBytes, cudaMemcpyDeviceToHost);
+	cout << "Bias:" << endl;
+	for (size_t i = 0; i < outputFeatures; i++)
+	{
+		cout << cpuBias[i] << " ";
+	}
+	cout << endl << endl;
 
 	return 0;
 }
