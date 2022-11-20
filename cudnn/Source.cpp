@@ -14,9 +14,9 @@ using std::chrono::nanoseconds;
 
 int main()
 {
-	const size_t batchSize = 1 << 12;
-	const size_t inputFeatures = 1 << 12;
-	const size_t outputFeatures = 1 << 12;
+	const size_t batchSize = 1 << 10;
+	const size_t inputFeatures = 1 << 10;
+	const size_t outputFeatures = 1 << 10;
 	const size_t trainingIterations = 1000;
 	const float learningRate = 0.01f;
 	const float updateScale = learningRate / batchSize;
@@ -187,7 +187,12 @@ int main()
 
 	
 
-	float* cpuOutputGradient = new float[outputSize];
+	cudaEvent_t start, stop;
+	float elapsedTime;
+	cudaEventCreate(&start);
+	cudaEventRecord(start, 0);
+	
+	float* cpuBiasGradient = new float[biasSize];
 	size_t iterations = trainingIterations;
 	while (iterations--)
 	{
@@ -259,16 +264,22 @@ int main()
 		cublasSaxpy(cublasHandle, weightSize, &updateScale, gpuWeightGradient, 1, gpuWeight, 1);
 		cublasSaxpy(cublasHandle, biasSize, &updateScale, gpuBiasGradient, 1, gpuBias, 1);
 		
-		cudaMemcpy(cpuOutputGradient, gpuOutputGradient, outputBytes, cudaMemcpyDeviceToHost);
+		cudaMemcpy(cpuBiasGradient, gpuBiasGradient, biasBytes, cudaMemcpyDeviceToHost);
 		
-		float averageOutputGradient = 0;
-		for (int i = 0; i < outputSize; i++)
-			averageOutputGradient += abs(cpuOutputGradient[i]);
-		averageOutputGradient /= outputSize;
+		float averageBiasGradient = 0;
+		for (int i = 0; i < biasSize; i++)
+			averageBiasGradient += abs(cpuBiasGradient[i]);
+		averageBiasGradient /= biasSize * batchSize;
 
-		cout << "Average output gradient: " << averageOutputGradient << endl;
+		cout << "Average Loss at iteration " << trainingIterations - iterations << ": " << averageBiasGradient << endl;
 	}
-	delete[] cpuOutputGradient;
+	delete[] cpuBiasGradient;
+	
+	cudaEventCreate(&stop);
+	cudaEventRecord(stop, 0);
+	cudaEventSynchronize(stop);
+	cudaEventElapsedTime(&elapsedTime, start, stop);
+	cout << "Elapsed Time: " << elapsedTime << " ms" << endl;
 
 	
 	
