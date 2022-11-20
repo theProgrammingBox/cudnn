@@ -83,7 +83,7 @@ int main()
 	cudaMalloc(&gpuInput, inputBytes);
 	cudaMalloc(&gpuInputGradient, inputBytes);
 	cudnnCreateTensorDescriptor(&inputDescriptor);
-	cudnnSetTensor4dDescriptor(inputDescriptor, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT,
+	cudnnSetTensor4dDescriptor(inputDescriptor, CUDNN_TENSOR_NHWC, CUDNN_DATA_FLOAT,
 		batchSize, inputFeatures, 1, 1);
 
 	// weight is stored transposed
@@ -92,7 +92,7 @@ int main()
 	curandGenerateNormal(randomGenerator, gpuWeight,
 		weightSize + (weightSize & 1), 0, 1);
 	cudnnCreateFilterDescriptor(&weightDescriptor);
-	cudnnSetFilter4dDescriptor(weightDescriptor, CUDNN_DATA_FLOAT, CUDNN_TENSOR_NCHW,
+	cudnnSetFilter4dDescriptor(weightDescriptor, CUDNN_DATA_FLOAT, CUDNN_TENSOR_NHWC,
 		outputFeatures, inputFeatures, 1, 1);
 
 	cudaMalloc(&gpuBias, biasBytes);
@@ -100,13 +100,13 @@ int main()
 	curandGenerateNormal(randomGenerator, gpuBias,
 		biasSize + (biasSize & 1), 0, 1);
 	cudnnCreateTensorDescriptor(&biasDescriptor);
-	cudnnSetTensor4dDescriptor(biasDescriptor, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT,
+	cudnnSetTensor4dDescriptor(biasDescriptor, CUDNN_TENSOR_NHWC, CUDNN_DATA_FLOAT,
 		1, outputFeatures, 1, 1);
 
 	cudaMalloc(&gpuOutput, outputBytes);
 	cudaMalloc(&gpuOutputGradient, outputBytes);
 	cudnnCreateTensorDescriptor(&outputDescriptor);
-	cudnnSetTensor4dDescriptor(outputDescriptor, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT,
+	cudnnSetTensor4dDescriptor(outputDescriptor, CUDNN_TENSOR_NHWC, CUDNN_DATA_FLOAT,
 		batchSize, outputFeatures, 1, 1);
 
 	cudnnCreateConvolutionDescriptor(&propagationDescriptor);
